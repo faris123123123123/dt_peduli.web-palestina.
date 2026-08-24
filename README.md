@@ -19,3 +19,4 @@ View your app in AI Studio: https://ai.studio/apps/69d9f04b-aeaf-47dc-87b9-66be6
 3. Run the app:
    `npm run dev`
 # dt.peduli._sedekah_palestina
+# dt.peduli._sedekah_palestina
