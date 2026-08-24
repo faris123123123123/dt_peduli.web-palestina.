@@ -1,0 +1,6 @@
+{
+  "name": "DT Peduli",
+  "description": "Aplikasi portal donasi dan kemanusiaan DT Peduli dengan navigasi multi-layar, program kepedulian Palestina, zakat & infaq, berita, serta alur donasi lengkap.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
