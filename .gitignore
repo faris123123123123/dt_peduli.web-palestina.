@@ -1,4 +1,10 @@
 node_modules/
+.npm-cache/
+dist/
+.env
+.env.local
+*.tar
+.DS_Storenode_modules/
 build/
 dist/
 coverage/

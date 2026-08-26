@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ScreenId, CampaignItem } from '../types';
-import { CAMPAIGNS_DATA } from '../data/mockData';
+import { CAMPAIGNS_DATA, DEFAULT_CATEGORY_SETTINGS } from '../data/mockData';
 import { CampaignCard } from '../components/CampaignCard';
 import { api } from '../services/api';
 
@@ -13,6 +13,7 @@ export const CampaignListScreen: React.FC<Props> = ({ onNavigate, onSelectForDon
   const [campaigns, setCampaigns] = useState<CampaignItem[]>(Object.values(CAMPAIGNS_DATA));
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORY_SETTINGS.campaigns);
 
   useEffect(() => {
     api.getCampaigns().then((data) => {
@@ -22,7 +23,9 @@ export const CampaignListScreen: React.FC<Props> = ({ onNavigate, onSelectForDon
     }).catch(() => {});
   }, []);
 
-  const categories = ['Semua', 'Palestina', 'Pendidikan', 'Tanggap Darurat', 'Wakaf', 'Zakat'];
+  useEffect(() => {
+    api.getCategorySettings().then((settings) => setCategories(settings.campaigns)).catch(() => {});
+  }, []);
 
   const allCampaigns = campaigns;
 

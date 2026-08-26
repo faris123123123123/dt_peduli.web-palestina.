@@ -1,7 +1,14 @@
-import { CampaignItem, NewsItem, DonationTransaction, HeroSettings, FaqItem, PaymentMethodItem } from '../types';
+import { CampaignItem, NewsItem, DonationTransaction, HeroSettings, BrandingSettings, CategorySettings, FaqItem, PaymentMethodItem } from '../types';
+import { DEFAULT_BRANDING_SETTINGS, DEFAULT_CATEGORY_SETTINGS } from '../data/mockData';
 import { CAMPAIGNS_DATA, NEWS_DATA, INITIAL_DONATIONS, DEFAULT_HERO_SETTINGS, DEFAULT_FAQS_DATA, DEFAULT_PAYMENT_METHODS } from '../data/mockData';
 
 const BASE_URL = '/api';
+let activeAdminRole = '';
+
+const adminHeaders = (headers: Record<string, string> = {}) => ({
+  ...headers,
+  'x-admin-role': activeAdminRole,
+});
 
 export interface DashboardStats {
   totalCollected: number;
@@ -13,6 +20,9 @@ export interface DashboardStats {
 }
 
 export const api = {
+  setActiveAdminRole(role?: string) {
+    activeAdminRole = role || '';
+  },
   // Stats
   async getStats(): Promise<DashboardStats> {
     try {
@@ -48,7 +58,7 @@ export const api = {
   async createCampaign(campaign: Partial<CampaignItem>): Promise<CampaignItem> {
     const res = await fetch(`${BASE_URL}/campaigns`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(campaign),
     });
     if (!res.ok) throw new Error('Failed to create campaign');
@@ -58,7 +68,7 @@ export const api = {
   async updateCampaign(id: string, campaign: Partial<CampaignItem>): Promise<CampaignItem> {
     const res = await fetch(`${BASE_URL}/campaigns/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(campaign),
     });
     if (!res.ok) throw new Error('Failed to update campaign');
@@ -68,6 +78,7 @@ export const api = {
   async deleteCampaign(id: string): Promise<void> {
     const res = await fetch(`${BASE_URL}/campaigns/${id}`, {
       method: 'DELETE',
+      headers: adminHeaders(),
     });
     if (!res.ok) throw new Error('Failed to delete campaign');
   },
@@ -86,7 +97,7 @@ export const api = {
   async createDonation(donation: Partial<DonationTransaction>): Promise<DonationTransaction> {
     const res = await fetch(`${BASE_URL}/donations`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(donation),
     });
     if (!res.ok) throw new Error('Failed to create donation');
@@ -96,7 +107,7 @@ export const api = {
   async updateDonation(id: string, updates: Partial<DonationTransaction>): Promise<DonationTransaction> {
     const res = await fetch(`${BASE_URL}/donations/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(updates),
     });
     if (!res.ok) throw new Error('Failed to update donation');
@@ -106,6 +117,7 @@ export const api = {
   async deleteDonation(id: string): Promise<void> {
     const res = await fetch(`${BASE_URL}/donations/${id}`, {
       method: 'DELETE',
+      headers: adminHeaders(),
     });
     if (!res.ok) throw new Error('Failed to delete donation');
   },
@@ -124,7 +136,7 @@ export const api = {
   async createNews(news: Partial<NewsItem>): Promise<NewsItem> {
     const res = await fetch(`${BASE_URL}/news`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(news),
     });
     if (!res.ok) throw new Error('Failed to create news');
@@ -134,7 +146,7 @@ export const api = {
   async updateNews(id: string, news: Partial<NewsItem>): Promise<NewsItem> {
     const res = await fetch(`${BASE_URL}/news/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(news),
     });
     if (!res.ok) throw new Error('Failed to update news');
@@ -144,6 +156,7 @@ export const api = {
   async deleteNews(id: string): Promise<void> {
     const res = await fetch(`${BASE_URL}/news/${id}`, {
       method: 'DELETE',
+      headers: adminHeaders(),
     });
     if (!res.ok) throw new Error('Failed to delete news');
   },
@@ -165,7 +178,7 @@ export const api = {
   async adminRegister(userData: { username: string; password: string; fullName: string; role?: string; email?: string }): Promise<{ success: boolean; user: any; message?: string }> {
     const res = await fetch(`${BASE_URL}/admin/register`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(userData),
     });
     const data = await res.json();
@@ -190,7 +203,7 @@ export const api = {
 
   async getAdminUsers(): Promise<any[]> {
     try {
-      const res = await fetch(`${BASE_URL}/admin/users`);
+      const res = await fetch(`${BASE_URL}/admin/users`, { headers: adminHeaders() });
       if (!res.ok) throw new Error('Failed to fetch admin users');
       return await res.json();
     } catch {
@@ -203,10 +216,22 @@ export const api = {
   async deleteAdminUser(username: string): Promise<void> {
     const res = await fetch(`${BASE_URL}/admin/users/${username}`, {
       method: 'DELETE',
+      headers: adminHeaders(),
     });
     const data = await res.json();
     if (!res.ok) {
       throw new Error(data.error || 'Gagal menghapus admin');
+    }
+  },
+
+  async unblockAdminUser(username: string): Promise<void> {
+    const res = await fetch(`${BASE_URL}/admin/users/${username}/unblock`, {
+      method: 'POST',
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Gagal membuka blokir admin');
     }
   },
 
@@ -229,7 +254,7 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/hero`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(settings),
       });
       if (!res.ok) throw new Error('Failed to update hero settings');
@@ -241,6 +266,72 @@ export const api = {
       const merged = { ...current, ...settings };
       localStorage.setItem('dt_hero_settings', JSON.stringify(merged));
       return merged;
+    }
+  },
+
+  // Brand identity settings
+  async getBrandingSettings(): Promise<BrandingSettings> {
+    try {
+      const res = await fetch(`${BASE_URL}/branding`);
+      if (!res.ok) throw new Error('Failed to fetch branding settings');
+      return await res.json();
+    } catch {
+      const saved = localStorage.getItem('dt_branding_settings');
+      if (saved) {
+        try { return JSON.parse(saved); } catch {}
+      }
+      return DEFAULT_BRANDING_SETTINGS;
+    }
+  },
+
+  async updateBrandingSettings(settings: Partial<BrandingSettings>): Promise<BrandingSettings> {
+    try {
+      const res = await fetch(`${BASE_URL}/branding`, {
+        method: 'PUT',
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(settings),
+      });
+      if (!res.ok) throw new Error('Failed to update branding settings');
+      const updated = await res.json();
+      localStorage.setItem('dt_branding_settings', JSON.stringify(updated));
+      return updated;
+    } catch {
+      const current = await this.getBrandingSettings();
+      const merged = { ...current, ...settings };
+      localStorage.setItem('dt_branding_settings', JSON.stringify(merged));
+      return merged;
+    }
+  },
+
+  // Public filter categories
+  async getCategorySettings(): Promise<CategorySettings> {
+    try {
+      const res = await fetch(`${BASE_URL}/categories`);
+      if (!res.ok) throw new Error('Failed to fetch category settings');
+      return await res.json();
+    } catch {
+      const saved = localStorage.getItem('dt_category_settings');
+      if (saved) {
+        try { return JSON.parse(saved); } catch {}
+      }
+      return DEFAULT_CATEGORY_SETTINGS;
+    }
+  },
+
+  async updateCategorySettings(settings: CategorySettings): Promise<CategorySettings> {
+    try {
+      const res = await fetch(`${BASE_URL}/categories`, {
+        method: 'PUT',
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(settings),
+      });
+      if (!res.ok) throw new Error('Failed to update category settings');
+      const updated = await res.json();
+      localStorage.setItem('dt_category_settings', JSON.stringify(updated));
+      return updated;
+    } catch {
+      localStorage.setItem('dt_category_settings', JSON.stringify(settings));
+      return settings;
     }
   },
 
@@ -263,7 +354,7 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/faqs`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(faq),
       });
       if (!res.ok) throw new Error('Failed to create FAQ');
@@ -291,7 +382,7 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/faqs/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(faq),
       });
       if (!res.ok) throw new Error('Failed to update FAQ');
@@ -320,6 +411,7 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/faqs/${id}`, {
         method: 'DELETE',
+        headers: adminHeaders(),
       });
       if (!res.ok) throw new Error('Failed to delete FAQ');
       const current = await this.getFaqs();
@@ -336,7 +428,7 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/faqs-bulk`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(faqs),
       });
       if (!res.ok) throw new Error('Failed to update FAQs in bulk');
@@ -368,7 +460,7 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/payment-methods`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(method),
       });
       if (!res.ok) throw new Error('Failed to create payment method');
@@ -403,7 +495,7 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/payment-methods/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(updates),
       });
       if (!res.ok) throw new Error('Failed to update payment method');
@@ -432,6 +524,7 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/payment-methods/${id}`, {
         method: 'DELETE',
+        headers: adminHeaders(),
       });
       if (!res.ok) throw new Error('Failed to delete payment method');
       const current = await this.getPaymentMethods();
@@ -448,7 +541,7 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/payment-methods-bulk`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(methods),
       });
       if (!res.ok) throw new Error('Failed to update payment methods in bulk');

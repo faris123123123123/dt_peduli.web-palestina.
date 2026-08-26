@@ -126,7 +126,6 @@ export const CampaignCard: React.FC<Props> = ({ campaign, onNavigate, onSelectFo
           className="w-full h-8 sm:h-10 md:h-11 bg-primary hover:bg-primary-container text-white rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm transition-all duration-200 flex items-center justify-center gap-1 cursor-pointer shadow-2xs hover:shadow-xs active:scale-[0.99] shrink-0"
           style={{ fontFamily: "'Baloo 2', sans-serif" }}
         >
-          <span className="material-symbols-outlined text-[15px] sm:text-[18px]">volunteer_activism</span>
           <span className="truncate">Donasi Sekarang</span>
         </button>
       </div>

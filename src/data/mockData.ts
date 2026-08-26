@@ -1,4 +1,13 @@
-import { CampaignItem, NewsItem, ScreenMeta, DonationTransaction, HeroSettings, FaqItem, PaymentMethodItem } from '../types';
+import { CampaignItem, NewsItem, ScreenMeta, DonationTransaction, HeroSettings, BrandingSettings, CategorySettings, FaqItem, PaymentMethodItem } from '../types';
+
+export const DEFAULT_BRANDING_SETTINGS: BrandingSettings = {
+  logoUrl: '',
+};
+
+export const DEFAULT_CATEGORY_SETTINGS: CategorySettings = {
+  news: ['Kemanusiaan', 'Gaza', 'Pemberdayaan', 'Pendidikan'],
+  campaigns: ['Palestina', 'Pendidikan', 'Tanggap Darurat', 'Zakat', 'Wakaf'],
+};
 
 export const SCREENS_CATALOG: ScreenMeta[] = [
   {

@@ -85,7 +85,6 @@ export const HomeScreen: React.FC<Props> = ({ isFixedVariant = false, onNavigate
                   className="flex-1 sm:flex-initial inline-flex items-center justify-center bg-[#fcd400] hover:bg-[#ffe16d] text-[#00296d] h-[38px] sm:h-[46px] md:h-[50px] px-4 sm:px-6 md:px-8 rounded-full font-bold text-xs sm:text-sm md:text-base transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 cursor-pointer gap-1.5"
                   style={{ fontFamily: "'Baloo 2', sans-serif" }}
                 >
-                  <span className="material-symbols-outlined text-[16px] sm:text-[20px]">volunteer_activism</span>
                   <span className="truncate">Donasi Sekarang</span>
                 </button>
                 <button
@@ -102,18 +101,18 @@ export const HomeScreen: React.FC<Props> = ({ isFixedVariant = false, onNavigate
       </section>
 
       {/* Impact Statistics Section */}
-      <section className="bg-surface-container-lowest border border-surface-container-highest rounded-[12px] p-4 sm:p-6 md:p-8 shadow-xs flex flex-col md:flex-row justify-around items-center gap-3 sm:gap-6 divide-y md:divide-y-0 md:divide-x divide-outline-variant">
-        <div className="text-center w-full py-1.5 md:py-0">
-          <h3 className="text-xl sm:text-2xl md:text-3xl text-primary font-bold" style={{ fontFamily: "'Baloo 2', sans-serif" }}>Rp8,5 M+</h3>
-          <p className="text-[11px] sm:text-xs text-on-surface-variant mt-0.5">Donasi Terkumpul · 2026</p>
+      <section className="bg-surface-container-lowest border border-surface-container-highest rounded-[12px] p-2.5 sm:p-6 md:p-8 shadow-xs flex flex-row justify-around items-stretch gap-0 sm:gap-6 divide-x divide-outline-variant">
+        <div className="text-center w-full px-1 py-1.5 sm:px-0 md:py-0">
+          <h3 className="text-base sm:text-2xl md:text-3xl text-primary font-bold" style={{ fontFamily: "'Baloo 2', sans-serif" }}>Rp8,5 M+</h3>
+          <p className="text-[9px] sm:text-xs text-on-surface-variant mt-0.5 leading-tight">Donasi Terkumpul · 2026</p>
         </div>
-        <div className="text-center w-full py-1.5 md:py-0">
-          <h3 className="text-xl sm:text-2xl md:text-3xl text-primary font-bold" style={{ fontFamily: "'Baloo 2', sans-serif" }}>849.876</h3>
-          <p className="text-[11px] sm:text-xs text-on-surface-variant mt-0.5">Penerima Manfaat · 2025</p>
+        <div className="text-center w-full px-1 py-1.5 sm:px-0 md:py-0">
+          <h3 className="text-base sm:text-2xl md:text-3xl text-primary font-bold" style={{ fontFamily: "'Baloo 2', sans-serif" }}>849.876</h3>
+          <p className="text-[9px] sm:text-xs text-on-surface-variant mt-0.5 leading-tight">Penerima Manfaat · 2025</p>
         </div>
-        <div className="text-center w-full py-1.5 md:py-0">
-          <h3 className="text-xl sm:text-2xl md:text-3xl text-primary font-bold" style={{ fontFamily: "'Baloo 2', sans-serif" }}>132.828</h3>
-          <p className="text-[11px] sm:text-xs text-on-surface-variant mt-0.5">Penerima Manfaat RPN · 2026</p>
+        <div className="text-center w-full px-1 py-1.5 sm:px-0 md:py-0">
+          <h3 className="text-base sm:text-2xl md:text-3xl text-primary font-bold" style={{ fontFamily: "'Baloo 2', sans-serif" }}>132.828</h3>
+          <p className="text-[9px] sm:text-xs text-on-surface-variant mt-0.5 leading-tight">Penerima Manfaat RPN · 2026</p>
         </div>
       </section>
 
@@ -420,7 +419,6 @@ export const HomeScreen: React.FC<Props> = ({ isFixedVariant = false, onNavigate
               className="w-full sm:w-auto bg-[#fcd400] text-[#6e5c00] hover:bg-[#ffe16d] h-[44px] sm:h-[50px] px-6 sm:px-8 rounded-full font-bold text-xs sm:text-sm md:text-base transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
               style={{ fontFamily: "'Baloo 2', sans-serif" }}
             >
-              <span className="material-symbols-outlined text-[18px] sm:text-[22px]">favorite</span>
               <span>Mulai Donasi Sekarang</span>
             </button>
 

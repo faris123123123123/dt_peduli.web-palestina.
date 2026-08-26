@@ -100,7 +100,6 @@ export const Header: React.FC<Props> = ({ currentScreen, onNavigate }) => {
               className="bg-primary hover:bg-primary-container text-white h-[36px] sm:h-[42px] px-3.5 sm:px-6 rounded-full flex items-center gap-1.5 font-bold transition-all duration-200 shadow-xs hover:shadow-md cursor-pointer text-xs sm:text-sm active:scale-95"
               style={{ fontFamily: "'Baloo 2', sans-serif" }}
             >
-              <span className="material-symbols-outlined text-[16px] sm:text-[18px]">favorite</span>
               <span>Donasi Sekarang</span>
             </button>
           </div>

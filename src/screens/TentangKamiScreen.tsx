@@ -144,7 +144,6 @@ export const TentangKamiScreen: React.FC<Props> = ({ onNavigate }) => {
           className="w-full md:w-auto bg-primary hover:bg-primary-container text-white h-[38px] sm:h-[42px] px-5 rounded-full text-xs sm:text-sm font-bold transition shadow-xs cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
           style={{ fontFamily: "'Baloo 2', sans-serif" }}
         >
-          <span className="material-symbols-outlined text-[16px]">favorite</span>
           <span>Donasi Sekarang</span>
         </button>
       </section>

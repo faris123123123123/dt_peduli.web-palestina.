@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { CampaignItem, NewsItem, DonationTransaction, HeroSettings, FaqItem, PaymentMethodItem } from '../types';
+import * as XLSX from 'xlsx-js-style';
+import { CampaignItem, NewsItem, DonationTransaction, HeroSettings, BrandingSettings, CategorySettings, FaqItem, PaymentMethodItem } from '../types';
 import { api, DashboardStats } from '../services/api';
-import { FALLBACK_IMAGE, DEFAULT_HERO_SETTINGS, DEFAULT_FAQS_DATA, DEFAULT_PAYMENT_METHODS } from '../data/mockData';
+import { FALLBACK_IMAGE, DEFAULT_HERO_SETTINGS, DEFAULT_CATEGORY_SETTINGS, DEFAULT_FAQS_DATA, DEFAULT_PAYMENT_METHODS } from '../data/mockData';
 import { ImageUploadInput } from '../components/ImageUploadInput';
 import { DtPeduliLogo } from '../components/DtPeduliLogo';
+import { AdminTab, canAccessTab, canPerformAction, getDefaultAdminTab, normalizeAdminRole } from './permissions';
 
 interface Props {
   currentUser: {
@@ -19,31 +21,45 @@ interface Props {
   onRefreshPublicData?: () => void;
 }
 
-type AdminTab = 'campaigns' | 'donations' | 'news' | 'accounts' | 'hero' | 'faqs' | 'payments';
-
 export const AdminDashboard: React.FC<Props> = ({
   currentUser,
   onLogout,
   onBackToPublic,
   onRefreshPublicData
 }) => {
-  const [currentTab, setCurrentTab] = useState<AdminTab>('campaigns');
+  const [currentTab, setCurrentTab] = useState<AdminTab>(() => getDefaultAdminTab(currentUser.role));
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
   const [donations, setDonations] = useState<DonationTransaction[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
   const [heroSettings, setHeroSettings] = useState<HeroSettings>(DEFAULT_HERO_SETTINGS);
+  const [brandingSettings, setBrandingSettings] = useState<BrandingSettings>({ logoUrl: '' });
+  const [categorySettings, setCategorySettings] = useState<CategorySettings>(DEFAULT_CATEGORY_SETTINGS);
   const [faqs, setFaqs] = useState<FaqItem[]>(DEFAULT_FAQS_DATA);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodItem[]>(DEFAULT_PAYMENT_METHODS);
   const [savingHero, setSavingHero] = useState(false);
+  const [savingBranding, setSavingBranding] = useState(false);
+  const [savingCategories, setSavingCategories] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const handleTabChange = (tab: AdminTab) => {
+    if (!canAccessTab(currentUser.role, tab)) return;
+    setCurrentTab(tab);
+    setIsSidebarCollapsed(true);
+    setIsMobileSidebarOpen(false);
+  };
+
+  const adminRole = normalizeAdminRole(currentUser.role);
 
   // Search & Filters
   const [campaignSearch, setCampaignSearch] = useState('');
   const [donationSearch, setDonationSearch] = useState('');
   const [donationFilterStatus, setDonationFilterStatus] = useState<string>('ALL');
+  const [donationFilterCampaign, setDonationFilterCampaign] = useState<string>('ALL');
   const [newsSearch, setNewsSearch] = useState('');
   const [faqSearch, setFaqSearch] = useState('');
   const [paymentSearch, setPaymentSearch] = useState('');
@@ -102,13 +118,15 @@ export const AdminDashboard: React.FC<Props> = ({
   const loadData = async () => {
     setLoading(true);
     try {
-      const [statsData, campsData, donData, newsData, usersData, heroData, faqsData, paymentsData] = await Promise.all([
+      const [statsData, campsData, donData, newsData, usersData, heroData, brandingData, categoryData, faqsData, paymentsData] = await Promise.all([
         api.getStats(),
         api.getCampaigns(),
         api.getDonations(),
         api.getNews(),
         api.getAdminUsers(),
         api.getHeroSettings(),
+        api.getBrandingSettings(),
+        api.getCategorySettings(),
         api.getFaqs(),
         api.getPaymentMethods()
       ]);
@@ -119,6 +137,12 @@ export const AdminDashboard: React.FC<Props> = ({
       setAdminUsers(usersData);
       if (heroData) {
         setHeroSettings(heroData);
+      }
+      if (brandingData) {
+        setBrandingSettings(brandingData);
+      }
+      if (categoryData) {
+        setCategorySettings(categoryData);
       }
       if (faqsData && Array.isArray(faqsData)) {
         setFaqs(faqsData);
@@ -134,7 +158,40 @@ export const AdminDashboard: React.FC<Props> = ({
     }
   };
 
+  const handleSaveBrandingSettings = async (e: React.FormEvent) => {
+    if (!canPerformAction(adminRole, 'manage_home')) return;
+    e.preventDefault();
+    setSavingBranding(true);
+    try {
+      const updated = await api.updateBrandingSettings(brandingSettings);
+      setBrandingSettings(updated);
+      if (onRefreshPublicData) onRefreshPublicData();
+      showToast('Logo berhasil disimpan dan diperbarui!', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menyimpan logo', 'error');
+    } finally {
+      setSavingBranding(false);
+    }
+  };
+
+  const handleSaveCategorySettings = async (e: React.FormEvent) => {
+    if (!canPerformAction(adminRole, 'manage_home')) return;
+    e.preventDefault();
+    setSavingCategories(true);
+    try {
+      const updated = await api.updateCategorySettings(categorySettings);
+      setCategorySettings(updated);
+      if (onRefreshPublicData) onRefreshPublicData();
+      showToast('Kategori berita dan campaign berhasil disimpan!', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menyimpan kategori', 'error');
+    } finally {
+      setSavingCategories(false);
+    }
+  };
+
   const handleSaveHeroSettings = async (e: React.FormEvent) => {
+    if (!canPerformAction(adminRole, 'manage_home')) return;
     e.preventDefault();
     setSavingHero(true);
     try {
@@ -165,6 +222,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleSaveFaq = async (e: React.FormEvent) => {
+    if (!canPerformAction(adminRole, 'manage_home')) return;
     e.preventDefault();
     if (!editingFaq || !editingFaq.question || !editingFaq.answer) {
       showToast('Pertanyaan dan jawaban wajib diisi', 'error');
@@ -192,6 +250,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleDeleteFaq = async (id: string) => {
+    if (!canPerformAction(adminRole, 'manage_home')) return;
     if (window.confirm('Apakah Anda yakin ingin menghapus pertanyaan FAQ ini?')) {
       try {
         await api.deleteFaq(id);
@@ -205,6 +264,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleMoveFaq = async (index: number, direction: 'up' | 'down') => {
+    if (!canPerformAction(adminRole, 'manage_home')) return;
     if ((direction === 'up' && index === 0) || (direction === 'down' && index === faqs.length - 1)) {
       return;
     }
@@ -251,6 +311,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleSavePayment = async (e: React.FormEvent) => {
+    if (!canPerformAction(adminRole, 'manage_payments')) return;
     e.preventDefault();
     if (!editingPayment || !editingPayment.name) {
       showToast('Nama metode pembayaran atau bank wajib diisi', 'error');
@@ -275,6 +336,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleDeletePayment = async (id: string) => {
+    if (!canPerformAction(adminRole, 'manage_payments')) return;
     if (window.confirm('Apakah Anda yakin ingin menghapus metode pembayaran ini?')) {
       try {
         await api.deletePaymentMethod(id);
@@ -288,6 +350,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleTogglePaymentActive = async (item: PaymentMethodItem) => {
+    if (!canPerformAction(adminRole, 'manage_payments')) return;
     try {
       const updated = { ...item, isActive: !item.isActive };
       await api.updatePaymentMethod(item.id, updated);
@@ -300,6 +363,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleMovePayment = async (index: number, direction: 'up' | 'down') => {
+    if (!canPerformAction(adminRole, 'manage_payments')) return;
     if ((direction === 'up' && index === 0) || (direction === 'down' && index === paymentMethods.length - 1)) {
       return;
     }
@@ -330,40 +394,77 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   // --- EXPORT & DOWNLOAD HANDLERS ---
-  const handleExportDonationsCSV = () => {
-    if (donations.length === 0) {
+  const handleExportDonationsExcel = () => {
+    if (filteredDonations.length === 0) {
       showToast('Tidak ada data transaksi donasi untuk diunduh', 'error');
       return;
     }
 
-    const headers = ['ID Transaksi', 'Tanggal', 'Nama Donatur', 'Anonim', 'Email', 'No. WA', 'Program Campaign', 'Nominal Pokok', 'Kode Unik', 'Total Donasi', 'Metode Pembayaran', 'Status', 'Doa/Pesan'];
-    const rows = donations.map((d) => [
-      `"${d.id}"`,
-      `"${d.createdAt}"`,
-      `"${d.donorName}"`,
-      d.isAnonymous ? '"Ya"' : '"Tidak"',
-      `"${d.donorEmail || '-'}"`,
-      `"${d.donorPhone || '-'}"`,
-      `"${d.campaignTitle.replace(/"/g, '""')}"`,
-      d.amount,
-      d.uniqueCode || 0,
-      d.totalAmount || d.amount,
-      `"${d.paymentMethod}"`,
-      `"${d.status}"`,
-      `"${(d.prayer || '').replace(/"/g, '""')}"`
-    ]);
-
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Laporan_Donasi_DTPeduli_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    showToast('File laporan transaksi donasi (.CSV) berhasil diunduh!');
+    const selectedCampaign = campaigns.find((campaign) => campaign.id === donationFilterCampaign);
+    const campaignFileName = selectedCampaign
+      ? selectedCampaign.title.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '').slice(0, 60)
+      : 'Semua_Campaign';
+    const reportDate = new Date().toISOString().slice(0, 10);
+    const rows = filteredDonations.map((d, index) => ({
+      'No': index + 1,
+      'ID Transaksi': d.id,
+      'Tanggal': d.createdAt,
+      'Nama Donatur': d.donorName,
+      'Status Anonim': d.isAnonymous ? 'Ya' : 'Tidak',
+      'Email': d.donorEmail || '-',
+      'No. WhatsApp': d.donorPhone || '-',
+      'Campaign': d.campaignTitle,
+      'Nominal Donasi (Rp)': d.amount,
+      'Kode Unik (Rp)': d.uniqueCode || 0,
+      'Total Donasi (Rp)': d.totalAmount || d.amount,
+      'Metode Pembayaran': d.paymentMethod,
+      'Status Pembayaran': d.status === 'VERIFIED' ? 'Terverifikasi' : d.status === 'PENDING' ? 'Menunggu Pembayaran' : 'Gagal',
+      'Doa / Pesan': d.prayer || '-'
+    }));
+    const headers = Object.keys(rows[0]);
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet['!cols'] = headers.map((header) => {
+      const longestValue = Math.max(
+        header.length,
+        ...rows.map((row) => String(row[header as keyof typeof row] ?? '').length)
+      );
+      return { wch: Math.min(Math.max(longestValue + 2, 8), 42) };
+    });
+    worksheet['!autofilter'] = { ref: worksheet['!ref'] || `A1:N${rows.length + 1}` };
+    worksheet['!freeze'] = { xSplit: 0, ySplit: 1 };
+    worksheet['!rows'] = [
+      { hpt: 30 },
+      ...rows.map((row) => ({
+        hpt: Math.min(60, Math.max(20, Math.ceil(String(row['Doa / Pesan']).length / 55) * 15)),
+      })),
+    ];
+    for (let columnIndex = 0; columnIndex < headers.length; columnIndex += 1) {
+      const headerCell = worksheet[XLSX.utils.encode_cell({ r: 0, c: columnIndex })];
+      if (headerCell) {
+        headerCell.s = {
+          fill: { fgColor: { rgb: '00296D' } },
+          font: { bold: true, color: { rgb: 'FFFFFF' } },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        };
+      }
+    }
+    for (let rowIndex = 1; rowIndex <= rows.length; rowIndex += 1) {
+      for (const column of ['H', 'N']) {
+        const cell = worksheet[`${column}${rowIndex + 1}`];
+        if (cell) cell.s = { alignment: { vertical: 'top', wrapText: true } };
+      }
+      for (const column of ['I', 'J', 'K']) {
+        const cell = worksheet[`${column}${rowIndex + 1}`];
+        if (cell) {
+          cell.z = '#,##0';
+          cell.s = { alignment: { horizontal: 'right' } };
+        }
+      }
+    }
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Laporan Donasi');
+    XLSX.writeFile(workbook, `DTPeduli_Laporan_Donasi_${campaignFileName}_${reportDate}.xlsx`);
+    showToast(`Laporan ${selectedCampaign ? 'campaign terpilih' : 'semua campaign'} berhasil diunduh!`);
   };
 
   const handleExportCampaignsJSON = () => {
@@ -404,6 +505,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleCreateAdminAccount = async (e: React.FormEvent) => {
+    if (!canPerformAction(adminRole, 'manage_accounts')) return;
     e.preventDefault();
     if (createAccountForm.password !== createAccountForm.confirmPassword) {
       showToast('Konfirmasi password tidak cocok', 'error');
@@ -439,6 +541,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleDeleteAdminAccount = async (username: string) => {
+    if (!canPerformAction(adminRole, 'manage_accounts')) return;
     if (username === currentUser.username) {
       showToast('Anda tidak dapat menghapus akun Anda sendiri yang sedang aktif.', 'error');
       return;
@@ -455,8 +558,20 @@ export const AdminDashboard: React.FC<Props> = ({
     }
   };
 
+  const handleUnblockAdminAccount = async (username: string) => {
+    if (!canPerformAction(adminRole, 'manage_accounts')) return;
+    try {
+      await api.unblockAdminUser(username);
+      showToast(`Akun admin ${username} berhasil dibuka blokirnya.`);
+      await loadData();
+    } catch (err: any) {
+      showToast(err.message || 'Gagal membuka blokir admin', 'error');
+    }
+  };
+
   // --- CAMPAIGN ACTIONS ---
   const handleOpenCreateCampaign = () => {
+    if (!canPerformAction(adminRole, 'manage_campaigns')) return;
     setEditingCampaign({
       title: '',
       category: 'Kemanusiaan',
@@ -474,11 +589,13 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleOpenEditCampaign = (camp: CampaignItem) => {
+    if (!canPerformAction(adminRole, 'manage_campaigns')) return;
     setEditingCampaign({ ...camp });
     setShowCampaignModal(true);
   };
 
   const handleSaveCampaign = async (e: React.FormEvent) => {
+    if (!canPerformAction(adminRole, 'manage_campaigns')) return;
     e.preventDefault();
     if (!editingCampaign || !editingCampaign.title) {
       showToast('Judul campaign wajib diisi', 'error');
@@ -503,6 +620,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleDeleteCampaign = async (id: string) => {
+    if (!canPerformAction(adminRole, 'manage_campaigns')) return;
     if (window.confirm('Yakin ingin menghapus campaign ini?')) {
       try {
         await api.deleteCampaign(id);
@@ -517,6 +635,7 @@ export const AdminDashboard: React.FC<Props> = ({
 
   // --- DONATION ACTIONS ---
   const handleSaveDonation = async (e: React.FormEvent) => {
+    if (!canPerformAction(adminRole, 'manage_donations')) return;
     e.preventDefault();
     if (!newDonationForm.amount || newDonationForm.amount <= 0) {
       showToast('Nominal donasi harus lebih dari 0', 'error');
@@ -552,6 +671,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleToggleDonationStatus = async (donation: DonationTransaction) => {
+    if (!canPerformAction(adminRole, 'manage_donations')) return;
     const nextStatus = donation.status === 'VERIFIED' ? 'PENDING' : 'VERIFIED';
     try {
       await api.updateDonation(donation.id, { status: nextStatus });
@@ -564,6 +684,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleDeleteDonation = async (id: string) => {
+    if (!canPerformAction(adminRole, 'manage_donations')) return;
     if (window.confirm('Hapus riwayat transaksi donasi ini?')) {
       try {
         await api.deleteDonation(id);
@@ -578,6 +699,7 @@ export const AdminDashboard: React.FC<Props> = ({
 
   // --- NEWS ACTIONS ---
   const handleOpenCreateNews = () => {
+    if (!canPerformAction(adminRole, 'manage_news')) return;
     setEditingNews({
       title: '',
       category: 'Kemanusiaan',
@@ -592,11 +714,13 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleOpenEditNews = (article: NewsItem) => {
+    if (!canPerformAction(adminRole, 'manage_news')) return;
     setEditingNews({ ...article });
     setShowNewsModal(true);
   };
 
   const handleSaveNews = async (e: React.FormEvent) => {
+    if (!canPerformAction(adminRole, 'manage_news')) return;
     e.preventDefault();
     if (!editingNews || !editingNews.title) {
       showToast('Judul berita wajib diisi', 'error');
@@ -621,6 +745,7 @@ export const AdminDashboard: React.FC<Props> = ({
   };
 
   const handleDeleteNews = async (id: string) => {
+    if (!canPerformAction(adminRole, 'manage_news')) return;
     if (window.confirm('Yakin ingin menghapus berita ini?')) {
       try {
         await api.deleteNews(id);
@@ -645,7 +770,8 @@ export const AdminDashboard: React.FC<Props> = ({
       d.donorName.toLowerCase().includes(donationSearch.toLowerCase()) ||
       d.campaignTitle.toLowerCase().includes(donationSearch.toLowerCase());
     const matchStatus = donationFilterStatus === 'ALL' || d.status === donationFilterStatus;
-    return matchSearch && matchStatus;
+    const matchCampaign = donationFilterCampaign === 'ALL' || d.campaignId === donationFilterCampaign;
+    return matchSearch && matchStatus && matchCampaign;
   });
 
   const filteredNews = news.filter(n =>
@@ -666,7 +792,7 @@ export const AdminDashboard: React.FC<Props> = ({
   );
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col select-none">
+    <div className="admin-dashboard min-h-screen bg-slate-100 flex flex-col select-none">
       {/* Toast Alert */}
       {notification && (
         <div
@@ -688,6 +814,24 @@ export const AdminDashboard: React.FC<Props> = ({
           
           {/* Brand Logo & System Label */}
           <div className="flex items-center gap-3.5">
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed((closed) => !closed)}
+              className="hidden md:flex w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 items-center justify-center cursor-pointer transition"
+              title={isSidebarCollapsed ? 'Buka navigasi' : 'Tutup navigasi'}
+              aria-label={isSidebarCollapsed ? 'Buka navigasi' : 'Tutup navigasi'}
+            >
+              <span className="material-symbols-outlined text-[20px]">{isSidebarCollapsed ? 'menu' : 'close'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen((open) => !open)}
+              className="flex md:hidden w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 items-center justify-center cursor-pointer transition"
+              title={isMobileSidebarOpen ? 'Tutup navigasi' : 'Buka navigasi'}
+              aria-label={isMobileSidebarOpen ? 'Tutup navigasi' : 'Buka navigasi'}
+            >
+              <span className="material-symbols-outlined text-[20px]">{isMobileSidebarOpen ? 'close' : 'menu'}</span>
+            </button>
             <button
               onClick={onBackToPublic}
               className="flex items-center focus:outline-hidden cursor-pointer"
@@ -753,18 +897,27 @@ export const AdminDashboard: React.FC<Props> = ({
       {/* Main Container with Left Sidebar & Right Content */}
       <div className="flex-1 max-w-[1600px] w-full mx-auto px-3 sm:px-6 py-5 flex flex-col md:flex-row gap-5 items-start">
         
-        {/* LEFT SIDEBAR NAVIGATION (COMPACT & SLIM) */}
-        <aside className="w-full md:w-52 lg:w-56 shrink-0 flex flex-col gap-3 md:sticky md:top-20">
+        {/* LEFT SIDEBAR NAVIGATION */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsSidebarCollapsed(true);
+            setIsMobileSidebarOpen(false);
+          }}
+          className={`fixed inset-0 z-30 bg-slate-950/30 transition-opacity duration-300 ${isMobileSidebarOpen || !isSidebarCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+          aria-label="Tutup navigasi"
+        />
+        <aside className={`fixed top-16 md:top-20 bottom-0 left-0 z-40 bg-slate-100 w-72 shrink-0 flex flex-col gap-3 overflow-hidden transition-transform duration-300 ease-out shadow-2xl ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${isSidebarCollapsed ? 'md:-translate-x-full' : 'md:translate-x-0'}`}>
           
           {/* Main Navigation Card */}
-          <div className="bg-white border border-slate-200/90 rounded-[14px] p-2 shadow-2xs flex flex-col gap-1 w-full">
-            <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+          <div className="bg-white border border-slate-200/90 rounded-[14px] p-2 shadow-2xs flex flex-col gap-1 w-full h-full md:h-auto overflow-y-auto">
+            <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">
               Navigasi Admin
             </div>
 
             <button
-              onClick={() => setCurrentTab('campaigns')}
-              className={`w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
+              onClick={() => handleTabChange('campaigns')}
+              className={`${!canAccessTab(adminRole, 'campaigns') ? 'hidden' : ''} order-2 w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
                 currentTab === 'campaigns'
                   ? 'bg-primary text-white shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100'
@@ -775,7 +928,7 @@ export const AdminDashboard: React.FC<Props> = ({
                 campaign
               </span>
               <div className="flex-1 min-w-0">
-                <div className="font-bold leading-tight truncate">1. Kelola Campaign</div>
+                <div className="font-bold leading-tight truncate">2. Kelola Campaign</div>
                 <div className={`text-[10px] font-normal truncate ${currentTab === 'campaigns' ? 'text-white/80' : 'text-slate-400'}`}>
                   {campaigns.length} Program
                 </div>
@@ -783,8 +936,8 @@ export const AdminDashboard: React.FC<Props> = ({
             </button>
 
             <button
-              onClick={() => setCurrentTab('donations')}
-              className={`w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
+              onClick={() => handleTabChange('donations')}
+              className={`${!canAccessTab(adminRole, 'donations') ? 'hidden' : ''} order-1 w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
                 currentTab === 'donations'
                   ? 'bg-primary text-white shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100'
@@ -795,7 +948,7 @@ export const AdminDashboard: React.FC<Props> = ({
                 payments
               </span>
               <div className="flex-1 min-w-0">
-                <div className="font-bold leading-tight truncate">2. Data Donasi</div>
+                <div className="font-bold leading-tight truncate">1. Data Donasi</div>
                 <div className={`text-[10px] font-normal truncate ${currentTab === 'donations' ? 'text-white/80' : 'text-slate-400'}`}>
                   {donations.length} Transaksi
                 </div>
@@ -803,8 +956,8 @@ export const AdminDashboard: React.FC<Props> = ({
             </button>
 
             <button
-              onClick={() => setCurrentTab('news')}
-              className={`w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
+              onClick={() => handleTabChange('news')}
+              className={`${!canAccessTab(adminRole, 'news') ? 'hidden' : ''} order-3 w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
                 currentTab === 'news'
                   ? 'bg-primary text-white shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100'
@@ -823,8 +976,8 @@ export const AdminDashboard: React.FC<Props> = ({
             </button>
 
             <button
-              onClick={() => setCurrentTab('accounts')}
-              className={`w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
+              onClick={() => handleTabChange('accounts')}
+              className={`${!canAccessTab(adminRole, 'accounts') ? 'hidden' : ''} order-6 w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
                 currentTab === 'accounts'
                   ? 'bg-primary text-white shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100'
@@ -835,62 +988,36 @@ export const AdminDashboard: React.FC<Props> = ({
                 manage_accounts
               </span>
               <div className="flex-1 min-w-0">
-                <div className="font-bold leading-tight truncate">4. Akun Admin</div>
+                <div className="font-bold leading-tight truncate">6. Akun Admin</div>
                 <div className={`text-[10px] font-normal truncate ${currentTab === 'accounts' ? 'text-white/80' : 'text-slate-400'}`}>
                   {adminUsers.length} Petugas
                 </div>
               </div>
             </button>
 
-            <div className="my-1 border-t border-slate-100"></div>
-
-            <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              Konten & Pembayaran
-            </div>
-
             <button
-              onClick={() => setCurrentTab('hero')}
-              className={`w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
-                currentTab === 'hero'
+              onClick={() => handleTabChange('home')}
+              className={`${!canAccessTab(adminRole, 'home') ? 'hidden' : ''} order-4 w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
+                currentTab === 'home'
                   ? 'bg-primary text-white shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100'
               }`}
               style={{ fontFamily: "'Baloo 2', sans-serif" }}
             >
-              <span className={`material-symbols-outlined text-[18px] shrink-0 ${currentTab === 'hero' ? 'text-secondary' : 'text-primary'}`}>
-                image
+              <span className={`material-symbols-outlined text-[18px] shrink-0 ${currentTab === 'home' ? 'text-secondary' : 'text-primary'}`}>
+                home
               </span>
               <div className="flex-1 min-w-0">
-                <div className="font-bold leading-tight truncate">5. Banner Beranda</div>
-                <div className={`text-[10px] font-normal truncate ${currentTab === 'hero' ? 'text-white/80' : 'text-slate-400'}`}>
-                  Foto & Hero
+                <div className="font-bold leading-tight truncate">4. Kelola Home</div>
+                <div className={`text-[10px] font-normal truncate ${currentTab === 'home' ? 'text-white/80' : 'text-slate-400'}`}>
+                  Banner, Brand & FAQ
                 </div>
               </div>
             </button>
 
             <button
-              onClick={() => setCurrentTab('faqs')}
-              className={`w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
-                currentTab === 'faqs'
-                  ? 'bg-primary text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-100'
-              }`}
-              style={{ fontFamily: "'Baloo 2', sans-serif" }}
-            >
-              <span className={`material-symbols-outlined text-[18px] shrink-0 ${currentTab === 'faqs' ? 'text-secondary' : 'text-primary'}`}>
-                quiz
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold leading-tight truncate">6. FAQ Beranda</div>
-                <div className={`text-[10px] font-normal truncate ${currentTab === 'faqs' ? 'text-white/80' : 'text-slate-400'}`}>
-                  {faqs.length} Tanya Jawab
-                </div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setCurrentTab('payments')}
-              className={`w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
+              onClick={() => handleTabChange('payments')}
+              className={`${!canAccessTab(adminRole, 'payments') ? 'hidden' : ''} order-5 w-full px-2.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer text-left ${
                 currentTab === 'payments'
                   ? 'bg-primary text-white shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100'
@@ -901,18 +1028,18 @@ export const AdminDashboard: React.FC<Props> = ({
                 account_balance
               </span>
               <div className="flex-1 min-w-0">
-                <div className="font-bold leading-tight truncate">7. Rekening & QRIS</div>
+                <div className="font-bold leading-tight truncate">5. Rekening & QRIS</div>
                 <div className={`text-[10px] font-normal truncate ${currentTab === 'payments' ? 'text-white/80' : 'text-slate-400'}`}>
                   {paymentMethods.length} Metode Bayar
                 </div>
               </div>
             </button>
 
-            <div className="my-1.5 border-t border-slate-100"></div>
+            <div className="order-7 my-1.5 border-t border-slate-100"></div>
 
             <button
               onClick={onBackToPublic}
-              className="w-full px-2.5 py-2 rounded-xl text-primary hover:bg-primary/10 font-bold text-xs flex items-center gap-2 transition cursor-pointer"
+              className="order-8 w-full px-2.5 py-2 rounded-xl text-primary hover:bg-primary/10 font-bold text-xs flex items-center gap-2 transition cursor-pointer"
             >
               <span className="material-symbols-outlined text-[16px]">open_in_new</span>
               <span className="truncate">Kunjungi Web Publik</span>
@@ -921,7 +1048,7 @@ export const AdminDashboard: React.FC<Props> = ({
         </aside>
 
         {/* RIGHT MAIN CONTENT AREA */}
-        <main className="flex-1 min-w-0 w-full flex flex-col gap-6">
+        <main className="flex-1 min-w-0 w-full flex flex-col gap-6 transition-all duration-300">
           
           {/* Overview Metrics Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
@@ -976,7 +1103,7 @@ export const AdminDashboard: React.FC<Props> = ({
           </div>
 
           {/* TAB 1: CAMPAIGNS */}
-          {currentTab === 'campaigns' && (
+          {canAccessTab(adminRole, 'campaigns') && currentTab === 'campaigns' && (
           <div className="flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
               <div className="relative flex-1 max-w-md">
@@ -1010,6 +1137,38 @@ export const AdminDashboard: React.FC<Props> = ({
                   <span>+ Tambah Campaign Baru</span>
                 </button>
               </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-[14px] p-4 shadow-xs">
+              <form onSubmit={handleSaveCategorySettings} className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900">Kategori Campaign</h3>
+                    <p className="text-[11px] text-slate-500">Kelola kategori yang tampil di filter Campaign.</p>
+                  </div>
+                  <button type="submit" disabled={savingCategories} className="self-start sm:self-auto bg-primary text-white px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50">
+                    {savingCategories ? 'Menyimpan...' : 'Simpan Kategori'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {categorySettings.campaigns.map((category, index) => (
+                    <div key={`campaign-category-${index}`} className="flex items-center gap-1 border border-slate-200 rounded-lg pl-2 bg-slate-50">
+                      <input
+                        type="text"
+                        value={category}
+                        onChange={(e) => setCategorySettings({ ...categorySettings, campaigns: categorySettings.campaigns.map((item, itemIndex) => itemIndex === index ? e.target.value : item) })}
+                        className="w-28 bg-transparent py-1.5 text-xs focus:outline-none"
+                      />
+                      <button type="button" onClick={() => setCategorySettings({ ...categorySettings, campaigns: categorySettings.campaigns.filter((_, itemIndex) => itemIndex !== index) })} className="w-7 h-7 text-red-600 hover:bg-red-50 rounded-md cursor-pointer" title="Hapus kategori">
+                        <span className="material-symbols-outlined text-[16px]">close</span>
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setCategorySettings({ ...categorySettings, campaigns: [...categorySettings.campaigns, 'Kategori Baru'] })} className="border border-dashed border-primary text-primary px-2.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer">
+                    + Tambah Kategori
+                  </button>
+                </div>
+              </form>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -1085,7 +1244,7 @@ export const AdminDashboard: React.FC<Props> = ({
         )}
 
         {/* TAB 2: DONATIONS */}
-        {currentTab === 'donations' && (
+        {canAccessTab(adminRole, 'donations') && currentTab === 'donations' && (
           <div className="flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
               <div className="flex flex-col sm:flex-row gap-3 flex-1">
@@ -1111,16 +1270,27 @@ export const AdminDashboard: React.FC<Props> = ({
                   <option value="VERIFIED">Terverifikasi (VERIFIED)</option>
                   <option value="PENDING">Menunggu Pembayaran (PENDING)</option>
                 </select>
+
+                <select
+                  value={donationFilterCampaign}
+                  onChange={(e) => setDonationFilterCampaign(e.target.value)}
+                  className="bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary font-semibold text-slate-700 max-w-full"
+                >
+                  <option value="ALL">Semua Campaign</option>
+                  {campaigns.map((campaign) => (
+                    <option key={campaign.id} value={campaign.id}>{campaign.title}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleExportDonationsCSV}
+                  onClick={handleExportDonationsExcel}
                   className="bg-emerald-700 hover:bg-emerald-800 text-white h-[44px] px-4 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
-                  title="Unduh laporan transaksi donasi ke format CSV/Excel"
+                  title="Unduh laporan transaksi donasi ke format Excel"
                 >
                   <span className="material-symbols-outlined text-[18px]">file_download</span>
-                  <span>Unduh Laporan Donasi (.CSV / Excel)</span>
+                  <span>Unduh Laporan Excel</span>
                 </button>
                 <button
                   onClick={() => setShowDonationModal(true)}
@@ -1131,6 +1301,16 @@ export const AdminDashboard: React.FC<Props> = ({
                   <span>+ Input Donasi Manual</span>
                 </button>
               </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span className="font-bold text-slate-800">{filteredDonations.length} transaksi tampil</span>
+              <span>dari {donations.length} total donasi</span>
+              {donationFilterCampaign !== 'ALL' && (
+                <span className="bg-primary-fixed text-primary px-2 py-0.5 rounded-full font-bold">
+                  {campaigns.find((campaign) => campaign.id === donationFilterCampaign)?.title || 'Campaign terpilih'}
+                </span>
+              )}
             </div>
 
             {/* Table */}
@@ -1207,7 +1387,7 @@ export const AdminDashboard: React.FC<Props> = ({
         )}
 
         {/* TAB 3: NEWS */}
-        {currentTab === 'news' && (
+        {canAccessTab(adminRole, 'news') && currentTab === 'news' && (
           <div className="flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
               <div className="relative flex-1 max-w-md">
@@ -1231,6 +1411,38 @@ export const AdminDashboard: React.FC<Props> = ({
                 <span className="material-symbols-outlined text-[20px]">edit_document</span>
                 <span>+ Tulis Berita Baru</span>
               </button>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-[14px] p-4 shadow-xs">
+              <form onSubmit={handleSaveCategorySettings} className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900">Kategori Berita</h3>
+                    <p className="text-[11px] text-slate-500">Kelola kategori yang tampil di filter Berita.</p>
+                  </div>
+                  <button type="submit" disabled={savingCategories} className="self-start sm:self-auto bg-primary text-white px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50">
+                    {savingCategories ? 'Menyimpan...' : 'Simpan Kategori'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {categorySettings.news.map((category, index) => (
+                    <div key={`news-category-${index}`} className="flex items-center gap-1 border border-slate-200 rounded-lg pl-2 bg-slate-50">
+                      <input
+                        type="text"
+                        value={category}
+                        onChange={(e) => setCategorySettings({ ...categorySettings, news: categorySettings.news.map((item, itemIndex) => itemIndex === index ? e.target.value : item) })}
+                        className="w-28 bg-transparent py-1.5 text-xs focus:outline-none"
+                      />
+                      <button type="button" onClick={() => setCategorySettings({ ...categorySettings, news: categorySettings.news.filter((_, itemIndex) => itemIndex !== index) })} className="w-7 h-7 text-red-600 hover:bg-red-50 rounded-md cursor-pointer" title="Hapus kategori">
+                        <span className="material-symbols-outlined text-[16px]">close</span>
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setCategorySettings({ ...categorySettings, news: [...categorySettings.news, 'Kategori Baru'] })} className="border border-dashed border-primary text-primary px-2.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer">
+                    + Tambah Kategori
+                  </button>
+                </div>
+              </form>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -1281,7 +1493,7 @@ export const AdminDashboard: React.FC<Props> = ({
         )}
 
         {/* TAB 4: ACCOUNTS */}
-        {currentTab === 'accounts' && (
+        {canAccessTab(adminRole, 'accounts') && currentTab === 'accounts' && (
           <div className="flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-[14px] border border-slate-200 shadow-xs">
               <div className="flex flex-col gap-1">
@@ -1333,6 +1545,11 @@ export const AdminDashboard: React.FC<Props> = ({
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-sm text-slate-900">{user.fullName}</span>
                             <span className="text-xs text-slate-500">(@{user.username})</span>
+                            {user.isLocked && (
+                              <span className="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                Terblokir
+                              </span>
+                            )}
                             {isCurrent && (
                               <span className="bg-green-100 text-green-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
                                 Akun Anda Saat Ini
@@ -1346,11 +1563,24 @@ export const AdminDashboard: React.FC<Props> = ({
                             <span>·</span>
                             <span>Dibuat: {user.createdAt || '18 Agustus 2026'}</span>
                           </div>
+                          {user.isLocked && (
+                            <span className="text-[11px] text-red-600 font-semibold mt-1">
+                              Login diblokir sampai {new Date(user.lockedUntil).toLocaleString('id-ID')}
+                            </span>
+                          )}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 self-end sm:self-center">
-                        {isCurrent ? (
+                        {user.isLocked ? (
+                          <button
+                            onClick={() => handleUnblockAdminAccount(user.username)}
+                            className="text-xs text-emerald-700 hover:bg-emerald-50 font-bold px-3 py-1.5 rounded-lg border border-emerald-200 transition cursor-pointer flex items-center gap-1"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">lock_open</span>
+                            <span>Buka Blokir</span>
+                          </button>
+                        ) : isCurrent ? (
                           <button
                             onClick={() => setShowChangePasswordModal(true)}
                             className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg transition cursor-pointer"
@@ -1375,8 +1605,73 @@ export const AdminDashboard: React.FC<Props> = ({
           </div>
         )}
 
-        {/* TAB 5: HERO BANNER MANAGEMENT */}
-        {currentTab === 'hero' && (
+        {/* TAB 5: HOME MANAGEMENT - BRAND IDENTITY */}
+        {canAccessTab(adminRole, 'home') && currentTab === 'home' && (
+          <div className="flex flex-col gap-6">
+            <div className="bg-white border border-slate-200 rounded-[16px] p-6 shadow-xs flex flex-col gap-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="font-h3 text-xl font-bold text-slate-900" style={{ fontFamily: "'Baloo 2', sans-serif" }}>
+                    Identitas Brand Website
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Ganti logo yang tampil di header dan footer website publik.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveBrandingSettings}
+                  disabled={savingBranding}
+                  className="bg-primary hover:bg-primary-container text-white px-5 py-2 rounded-xl font-bold text-xs shadow-md transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                  style={{ fontFamily: "'Baloo 2', sans-serif" }}
+                >
+                  <span className="material-symbols-outlined text-[16px]">save</span>
+                  <span>{savingBranding ? 'Menyimpan...' : 'Simpan Logo'}</span>
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveBrandingSettings} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ImageUploadInput
+                  label="Upload Logo DT Peduli"
+                  value={brandingSettings.logoUrl || ''}
+                  onChange={(url) => setBrandingSettings({ ...brandingSettings, logoUrl: url })}
+                  aspectRatio="auto"
+                  helperText="Gunakan PNG transparan atau SVG agar logo tetap tajam di semua ukuran."
+                />
+
+                <div className="border border-slate-200 rounded-xl bg-slate-50 min-h-48 flex flex-col items-center justify-center gap-3 p-6">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Pratinjau Header</span>
+                  {brandingSettings.logoUrl ? (
+                    <img
+                      src={brandingSettings.logoUrl}
+                      alt="Pratinjau logo DT Peduli"
+                      className="max-w-full max-h-24 object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <DtPeduliLogo size="lg" />
+                  )}
+                  <span className="text-[11px] text-slate-400">Logo lama digunakan jika aset dihapus.</span>
+                </div>
+
+                <div className="lg:col-span-2 flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    disabled={savingBranding}
+                    className="bg-primary hover:bg-primary-container text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                    style={{ fontFamily: "'Baloo 2', sans-serif" }}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                    <span>{savingBranding ? 'Menyimpan...' : 'Simpan & Terapkan Logo'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* HOME MANAGEMENT - HERO BANNER */}
+        {canAccessTab(adminRole, 'home') && currentTab === 'home' && (
           <div className="flex flex-col gap-6">
             <div className="bg-white border border-slate-200 rounded-[16px] p-6 shadow-xs flex flex-col gap-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
@@ -1588,8 +1883,8 @@ export const AdminDashboard: React.FC<Props> = ({
           </div>
         )}
 
-        {/* TAB 6: FAQ MANAGEMENT */}
-        {currentTab === 'faqs' && (
+        {/* HOME MANAGEMENT - FAQ */}
+        {canAccessTab(adminRole, 'home') && currentTab === 'home' && (
           <div className="flex flex-col gap-6">
             {/* Header and Add Button */}
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 bg-white p-5 rounded-[16px] border border-slate-200 shadow-xs">
@@ -1751,8 +2046,8 @@ export const AdminDashboard: React.FC<Props> = ({
           </div>
         )}
 
-        {/* TAB 7: PAYMENT METHODS & REKENING / QRIS */}
-        {currentTab === 'payments' && (
+        {/* TAB 6: PAYMENT METHODS & REKENING / QRIS */}
+        {canAccessTab(adminRole, 'payments') && currentTab === 'payments' && (
           <div className="flex flex-col gap-6">
             {/* Action Bar */}
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
@@ -2190,15 +2485,13 @@ export const AdminDashboard: React.FC<Props> = ({
                 <div className="flex flex-col gap-1.5">
                   <label className="font-bold text-slate-800">Kategori</label>
                   <select
-                    value={editingCampaign.category || 'Kemanusiaan'}
+                    value={editingCampaign.category || categorySettings.campaigns[0] || 'Palestina'}
                     onChange={(e) => setEditingCampaign({ ...editingCampaign, category: e.target.value })}
                     className="border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:border-primary"
                   >
-                    <option value="Kemanusiaan">Kemanusiaan</option>
-                    <option value="Kesehatan">Kesehatan</option>
-                    <option value="Pendidikan">Pendidikan</option>
-                    <option value="Zakat">Zakat & Infaq</option>
-                    <option value="Wakaf">Wakaf</option>
+                    {[...(editingCampaign.category && !categorySettings.campaigns.includes(editingCampaign.category) ? [editingCampaign.category] : []), ...categorySettings.campaigns].map((category) => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -2459,12 +2752,15 @@ export const AdminDashboard: React.FC<Props> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="font-bold text-slate-800">Kategori</label>
-                  <input
-                    type="text"
-                    value={editingNews.category || 'Kemanusiaan'}
+                  <select
+                    value={editingNews.category || categorySettings.news[0] || 'Kemanusiaan'}
                     onChange={(e) => setEditingNews({ ...editingNews, category: e.target.value })}
                     className="border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:border-primary"
-                  />
+                  >
+                    {categorySettings.news.map((category) => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="flex flex-col gap-1.5">

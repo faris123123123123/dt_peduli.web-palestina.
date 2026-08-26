@@ -263,7 +263,6 @@ export const CampaignDetailScreen: React.FC<Props> = ({
               className="w-full bg-primary-container text-on-primary h-[44px] sm:h-[48px] rounded-full text-xs sm:text-sm font-bold hover:bg-primary transition-all duration-200 shadow-xs hover:shadow-md flex items-center justify-center gap-2 cursor-pointer"
               style={{ fontFamily: "'Baloo 2', sans-serif" }}
             >
-              <span className="material-symbols-outlined text-[18px] sm:text-[20px]">favorite</span>
               <span>Donasi Sekarang</span>
             </button>
 

@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
+import { supabase } from './src/server/supabase';
 
 // Initial dataset
 const initialCampaigns: Record<string, any> = {
@@ -281,11 +282,23 @@ let adminUsersDb: any[] = [
   }
 ];
 
+const adminLoginAttemptsDb: Record<string, { failedAttempts: number; lockedUntil: number }> = {};
+const ADMIN_LOCKOUT_DURATION_MS = 24 * 60 * 60 * 1000;
+
 let heroSettingsDb = {
   imageUrl: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=1600&q=85',
   badgeText: 'Aksi Kemanusiaan DT Peduli',
   captionTitle: 'Bersama Membangun Harapan, Menebar Manfaat',
   captionSubtitle: 'Penyaluran bantuan kemanusiaan dan sedekah untuk saudara kita di Palestina & pelosok negeri.',
+};
+
+let brandingSettingsDb = {
+  logoUrl: '',
+};
+
+let categorySettingsDb = {
+  news: ['Kemanusiaan', 'Gaza', 'Pemberdayaan', 'Pendidikan'],
+  campaigns: ['Palestina', 'Pendidikan', 'Tanggap Darurat', 'Zakat', 'Wakaf'],
 };
 
 let faqsDb: any[] = [
@@ -399,11 +412,46 @@ async function startServer() {
 
   app.use(express.json({ limit: '25mb' }));
 
+  const requireRole = (req: express.Request, res: express.Response, roles: string[]) => {
+    const role = req.header('x-admin-role');
+    if (!role || !roles.includes(role)) {
+      res.status(403).json({ error: 'Anda tidak memiliki izin untuk melakukan tindakan ini.' });
+      return false;
+    }
+    return true;
+  };
+
   // === REST API ENDPOINTS ===
 
   // 1. Health Check
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() });
+  });
+
+  app.get('/api/supabase-test', async (_req, res) => {
+    try {
+      const { data, error } = await supabase.from('site_settings').select('id').limit(1);
+
+      if (error) {
+        return res.status(500).json({
+          connected: false,
+          error: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+      }
+
+      res.json({ connected: true, data });
+    } catch (err: any) {
+      console.error('Supabase connection error:', err);
+      res.status(500).json({
+        connected: false,
+        error: err?.message || String(err),
+        cause: err?.cause?.message || err?.cause?.code || null,
+        code: err?.cause?.code || null,
+      });
+    }
   });
 
   // 2. Statistics Overview
@@ -426,19 +474,47 @@ async function startServer() {
   });
 
   // 3. CAMPAIGNS API
-  app.get('/api/campaigns', (req, res) => {
+  const campaignFromRow = (row: any) => ({
+    ...(row.data || {}),
+    id: row.id,
+  });
+
+  const seedCampaignsIfEmpty = async () => {
+    const { data, error } = await supabase.from('campaigns').select('id').limit(1);
+    if (error || (data && data.length > 0)) return;
+
+    const rows = Object.values(campaignsDb).map((campaign: any) => ({
+      id: campaign.id,
+      data: campaign,
+    }));
+    if (rows.length > 0) {
+      await supabase.from('campaigns').upsert(rows, { onConflict: 'id' });
+    }
+  };
+
+  app.get('/api/campaigns', async (req, res) => {
+    const { data, error } = await supabase.from('campaigns').select('id, data').order('created_at', { ascending: true });
+    if (!error && data && data.length > 0) {
+      const campaigns = data.map(campaignFromRow);
+      campaignsDb = Object.fromEntries(campaigns.map((campaign: any) => [campaign.id, campaign]));
+      return res.json(campaigns);
+    }
+
+    await seedCampaignsIfEmpty();
     res.json(Object.values(campaignsDb));
   });
 
-  app.get('/api/campaigns/:id', (req, res) => {
-    const campaign = campaignsDb[req.params.id];
+  app.get('/api/campaigns/:id', async (req, res) => {
+    const { data, error } = await supabase.from('campaigns').select('id, data').eq('id', req.params.id).maybeSingle();
+    const campaign = !error && data ? campaignFromRow(data) : campaignsDb[req.params.id];
     if (!campaign) {
       return res.status(404).json({ error: 'Campaign not found' });
     }
     res.json(campaign);
   });
 
-  app.post('/api/campaigns', (req, res) => {
+  app.post('/api/campaigns', async (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
     const body = req.body;
     const id = body.id || 'camp-' + Date.now();
     const newCampaign = {
@@ -460,11 +536,16 @@ async function startServer() {
       recentDonors: Array.isArray(body.recentDonors) ? body.recentDonors : []
     };
 
+    const { error } = await supabase.from('campaigns').upsert({ id, data: newCampaign }, { onConflict: 'id' });
+    if (error) {
+      return res.status(500).json({ error: `Gagal menyimpan campaign: ${error.message}` });
+    }
     campaignsDb[id] = newCampaign;
     res.status(201).json(newCampaign);
   });
 
-  app.put('/api/campaigns/:id', (req, res) => {
+  app.put('/api/campaigns/:id', async (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
     const { id } = req.params;
     if (!campaignsDb[id]) {
       return res.status(404).json({ error: 'Campaign not found' });
@@ -480,14 +561,23 @@ async function startServer() {
       daysRemaining: req.body.daysRemaining !== undefined ? Number(req.body.daysRemaining) : campaignsDb[id].daysRemaining,
     };
 
+    const { error } = await supabase.from('campaigns').update({ data: updated, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) {
+      return res.status(500).json({ error: `Gagal memperbarui campaign: ${error.message}` });
+    }
     campaignsDb[id] = updated;
     res.json(updated);
   });
 
-  app.delete('/api/campaigns/:id', (req, res) => {
+  app.delete('/api/campaigns/:id', async (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
     const { id } = req.params;
     if (!campaignsDb[id]) {
       return res.status(404).json({ error: 'Campaign not found' });
+    }
+    const { error } = await supabase.from('campaigns').delete().eq('id', id);
+    if (error) {
+      return res.status(500).json({ error: `Gagal menghapus campaign: ${error.message}` });
     }
     delete campaignsDb[id];
     res.json({ message: 'Campaign deleted successfully', id });
@@ -546,6 +636,7 @@ async function startServer() {
   });
 
   app.put('/api/donations/:id', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Keuangan'])) return;
     const { id } = req.params;
     const index = donationsDb.findIndex(d => d.id === id);
     if (index === -1) {
@@ -573,6 +664,7 @@ async function startServer() {
   });
 
   app.delete('/api/donations/:id', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Keuangan'])) return;
     const { id } = req.params;
     const initialLen = donationsDb.length;
     donationsDb = donationsDb.filter(d => d.id !== id);
@@ -583,19 +675,47 @@ async function startServer() {
   });
 
   // 5. NEWS API
-  app.get('/api/news', (req, res) => {
+  const newsFromRow = (row: any) => ({
+    ...(row.data || {}),
+    id: row.id,
+  });
+
+  const seedNewsIfEmpty = async () => {
+    const { data, error } = await supabase.from('news').select('id').limit(1);
+    if (error || (data && data.length > 0)) return;
+
+    const rows = newsDb.map((article: any) => ({
+      id: article.id,
+      data: article,
+    }));
+    if (rows.length > 0) {
+      await supabase.from('news').upsert(rows, { onConflict: 'id' });
+    }
+  };
+
+  app.get('/api/news', async (req, res) => {
+    const { data, error } = await supabase.from('news').select('id, data').order('created_at', { ascending: false });
+    if (!error && data && data.length > 0) {
+      const articles = data.map(newsFromRow);
+      newsDb = articles;
+      return res.json(articles);
+    }
+
+    await seedNewsIfEmpty();
     res.json(newsDb);
   });
 
-  app.get('/api/news/:id', (req, res) => {
-    const item = newsDb.find(n => n.id === req.params.id);
+  app.get('/api/news/:id', async (req, res) => {
+    const { data, error } = await supabase.from('news').select('id, data').eq('id', req.params.id).maybeSingle();
+    const item = !error && data ? newsFromRow(data) : newsDb.find(n => n.id === req.params.id);
     if (!item) {
       return res.status(404).json({ error: 'News item not found' });
     }
     res.json(item);
   });
 
-  app.post('/api/news', (req, res) => {
+  app.post('/api/news', async (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
     const body = req.body;
     const id = body.id || 'news-' + Date.now();
     const newArticle = {
@@ -611,11 +731,16 @@ async function startServer() {
       tags: Array.isArray(body.tags) ? body.tags : ['Kemanusiaan', 'DT Peduli']
     };
 
+    const { error } = await supabase.from('news').upsert({ id, data: newArticle }, { onConflict: 'id' });
+    if (error) {
+      return res.status(500).json({ error: `Gagal menyimpan berita: ${error.message}` });
+    }
     newsDb.unshift(newArticle);
     res.status(201).json(newArticle);
   });
 
-  app.put('/api/news/:id', (req, res) => {
+  app.put('/api/news/:id', async (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
     const { id } = req.params;
     const index = newsDb.findIndex(n => n.id === id);
     if (index === -1) {
@@ -628,13 +753,22 @@ async function startServer() {
       id
     };
 
+    const { error } = await supabase.from('news').update({ data: updated, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) {
+      return res.status(500).json({ error: `Gagal memperbarui berita: ${error.message}` });
+    }
     newsDb[index] = updated;
     res.json(updated);
   });
 
-  app.delete('/api/news/:id', (req, res) => {
+  app.delete('/api/news/:id', async (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
     const { id } = req.params;
     const initialLen = newsDb.length;
+    const { error } = await supabase.from('news').delete().eq('id', id);
+    if (error) {
+      return res.status(500).json({ error: `Gagal menghapus berita: ${error.message}` });
+    }
     newsDb = newsDb.filter(n => n.id !== id);
     if (newsDb.length === initialLen) {
       return res.status(404).json({ error: 'News article not found' });
@@ -649,10 +783,40 @@ async function startServer() {
       return res.status(400).json({ error: 'Username dan password wajib diisi' });
     }
 
-    const user = adminUsersDb.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
-    if (!user || user.password !== password) {
-      return res.status(401).json({ error: 'Username atau password salah. Silakan coba lagi.' });
+    const normalizedUsername = username.trim().toLowerCase();
+    const lockoutKey = normalizedUsername;
+    const user = adminUsersDb.find(u => u.username.toLowerCase() === normalizedUsername);
+    const loginAttempt = adminLoginAttemptsDb[lockoutKey];
+    if (loginAttempt?.lockedUntil && loginAttempt.lockedUntil > Date.now()) {
+      const remainingHours = Math.ceil((loginAttempt.lockedUntil - Date.now()) / (60 * 60 * 1000));
+      return res.status(429).json({
+        error: `Akses diblokir sementara karena 3 kali percobaan gagal. Coba lagi dalam ${remainingHours} jam.`
+      });
     }
+
+    if (loginAttempt?.lockedUntil && loginAttempt.lockedUntil <= Date.now()) {
+      delete adminLoginAttemptsDb[lockoutKey];
+    }
+
+    if (!user || user.password !== password) {
+      if (!user) {
+        return res.status(401).json({ error: 'Username atau password salah.' });
+      }
+
+      const failedAttempts = (adminLoginAttemptsDb[lockoutKey]?.failedAttempts || 0) + 1;
+      const lockedUntil = failedAttempts >= 3 ? Date.now() + ADMIN_LOCKOUT_DURATION_MS : 0;
+      adminLoginAttemptsDb[lockoutKey] = { failedAttempts, lockedUntil };
+
+      if (lockedUntil) {
+        return res.status(429).json({ error: 'Akses diblokir selama 24 jam karena 3 kali percobaan login gagal.' });
+      }
+
+      return res.status(401).json({
+        error: `Username atau password salah. Percobaan tersisa: ${3 - failedAttempts}.`
+      });
+    }
+
+    delete adminLoginAttemptsDb[lockoutKey];
 
     res.json({
       success: true,
@@ -669,6 +833,7 @@ async function startServer() {
   });
 
   app.post('/api/admin/register', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin'])) return;
     const { username, password, fullName, role, email } = req.body;
     if (!username || !password || !fullName) {
       return res.status(400).json({ error: 'Username, password, dan nama lengkap wajib diisi' });
@@ -727,18 +892,34 @@ async function startServer() {
   });
 
   app.get('/api/admin/users', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin'])) return;
     const safeUsers = adminUsersDb.map(u => ({
       id: u.id,
       username: u.username,
       fullName: u.fullName,
       role: u.role,
       email: u.email,
-      createdAt: u.createdAt
+      createdAt: u.createdAt,
+      failedAttempts: adminLoginAttemptsDb[u.username.toLowerCase()]?.failedAttempts || 0,
+      lockedUntil: adminLoginAttemptsDb[u.username.toLowerCase()]?.lockedUntil || 0,
+      isLocked: (adminLoginAttemptsDb[u.username.toLowerCase()]?.lockedUntil || 0) > Date.now()
     }));
     res.json(safeUsers);
   });
 
+  app.post('/api/admin/users/:username/unblock', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin'])) return;
+    const cleanUsername = req.params.username.trim().toLowerCase();
+    const user = adminUsersDb.find(u => u.username.toLowerCase() === cleanUsername);
+    if (!user) {
+      return res.status(404).json({ error: 'Akun admin tidak ditemukan' });
+    }
+    delete adminLoginAttemptsDb[cleanUsername];
+    res.json({ message: `Akun admin ${user.username} berhasil dibuka blokirnya` });
+  });
+
   app.delete('/api/admin/users/:username', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin'])) return;
     const { username } = req.params;
     const cleanUsername = username.trim().toLowerCase();
     
@@ -762,6 +943,7 @@ async function startServer() {
   });
 
   app.put('/api/hero', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
     heroSettingsDb = {
       ...heroSettingsDb,
       ...req.body
@@ -769,13 +951,46 @@ async function startServer() {
     res.json(heroSettingsDb);
   });
 
-  // 8. FAQ MANAGEMENT API
+  // 8. BRANDING API
+  app.get('/api/branding', (req, res) => {
+    res.json(brandingSettingsDb);
+  });
+
+  app.put('/api/branding', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
+    brandingSettingsDb = {
+      ...brandingSettingsDb,
+      logoUrl: typeof req.body.logoUrl === 'string' ? req.body.logoUrl : brandingSettingsDb.logoUrl,
+    };
+    res.json(brandingSettingsDb);
+  });
+
+  // 9. CATEGORY SETTINGS API
+  app.get('/api/categories', (req, res) => {
+    res.json(categorySettingsDb);
+  });
+
+  app.put('/api/categories', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
+    const cleanList = (value: unknown, fallback: string[]) => {
+      if (!Array.isArray(value)) return fallback;
+      return [...new Set(value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map(item => item.trim()))];
+    };
+    categorySettingsDb = {
+      news: cleanList(req.body.news, categorySettingsDb.news),
+      campaigns: cleanList(req.body.campaigns, categorySettingsDb.campaigns),
+    };
+    res.json(categorySettingsDb);
+  });
+
+  // 10. FAQ MANAGEMENT API
   app.get('/api/faqs', (req, res) => {
     const sorted = [...faqsDb].sort((a, b) => (a.order || 0) - (b.order || 0));
     res.json(sorted);
   });
 
   app.post('/api/faqs', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
     const { question, answer } = req.body;
     if (!question || !answer) {
       return res.status(400).json({ error: 'Pertanyaan dan jawaban wajib diisi' });
@@ -794,6 +1009,7 @@ async function startServer() {
   });
 
   app.put('/api/faqs/:id', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
     const { id } = req.params;
     const index = faqsDb.findIndex(f => f.id === id);
     if (index === -1) {
@@ -809,6 +1025,7 @@ async function startServer() {
   });
 
   app.delete('/api/faqs/:id', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
     const { id } = req.params;
     const initialLen = faqsDb.length;
     faqsDb = faqsDb.filter(f => f.id !== id);
@@ -821,6 +1038,7 @@ async function startServer() {
   });
 
   app.put('/api/faqs-bulk', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Redaksi & Media', 'Admin Program'])) return;
     if (Array.isArray(req.body)) {
       faqsDb = req.body;
       res.json(faqsDb);
@@ -836,6 +1054,7 @@ async function startServer() {
   });
 
   app.post('/api/payment-methods', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Keuangan'])) return;
     const body = req.body;
     const newId = body.id || 'pm-' + Date.now();
     const newMethod = {
@@ -859,6 +1078,7 @@ async function startServer() {
   });
 
   app.put('/api/payment-methods/:id', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Keuangan'])) return;
     const { id } = req.params;
     const index = paymentMethodsDb.findIndex(m => m.id === id);
     if (index === -1) {
@@ -875,6 +1095,7 @@ async function startServer() {
   });
 
   app.delete('/api/payment-methods/:id', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Keuangan'])) return;
     const { id } = req.params;
     const initialLen = paymentMethodsDb.length;
     paymentMethodsDb = paymentMethodsDb.filter(m => m.id !== id);
@@ -887,6 +1108,7 @@ async function startServer() {
   });
 
   app.put('/api/payment-methods-bulk', (req, res) => {
+    if (!requireRole(req, res, ['Super Admin', 'Admin Keuangan'])) return;
     if (Array.isArray(req.body)) {
       paymentMethodsDb = req.body;
       res.json(paymentMethodsDb);

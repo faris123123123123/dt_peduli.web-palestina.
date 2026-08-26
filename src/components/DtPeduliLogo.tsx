@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { api } from '../services/api';
 
 interface Props {
   variant?: 'default' | 'white' | 'dark';
@@ -13,6 +14,18 @@ export const DtPeduliLogo: React.FC<Props> = ({
   className = '',
   showTagline = false,
 }) => {
+  const [logoUrl, setLogoUrl] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    api.getBrandingSettings().then((settings) => {
+      if (mounted) setLogoUrl(settings.logoUrl || '');
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Brand Colors matching DT Peduli visual identity
   const amberColor = '#F5A417'; // Authentic golden yellow/amber for "dt"
   const blueColor = variant === 'white' ? '#FFFFFF' : '#234FA2'; // Deep royal blue for "peduli" (or white on dark backgrounds)
@@ -28,6 +41,18 @@ export const DtPeduliLogo: React.FC<Props> = ({
   };
 
   const cfg = sizeConfig[size] || sizeConfig.responsive;
+
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt="DT Peduli"
+        className={`w-auto object-contain ${size === 'responsive' ? 'h-7 sm:h-8 md:h-9' : 'h-8' } ${className}`}
+        referrerPolicy="no-referrer"
+        onError={() => setLogoUrl('')}
+      />
+    );
+  }
 
   return (
     <div className={`inline-flex flex-col select-none ${className}`}>

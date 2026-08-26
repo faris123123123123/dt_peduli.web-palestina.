@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ScreenId, NewsItem } from '../types';
-import { NEWS_DATA, FALLBACK_IMAGE } from '../data/mockData';
+import { NEWS_DATA, FALLBACK_IMAGE, DEFAULT_CATEGORY_SETTINGS } from '../data/mockData';
 import { api } from '../services/api';
 
 interface Props {
@@ -13,6 +13,7 @@ export const BeritaScreen: React.FC<Props> = ({ onNavigate }) => {
   const [newsList, setNewsList] = useState<NewsItem[]>(NEWS_DATA);
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('Semua');
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORY_SETTINGS.news);
 
   useEffect(() => {
     api.getNews().then((data) => {
@@ -22,7 +23,9 @@ export const BeritaScreen: React.FC<Props> = ({ onNavigate }) => {
     }).catch(() => {});
   }, []);
 
-  const categories = ['Semua', 'Kemanusiaan', 'Gaza', 'Pemberdayaan', 'Pendidikan'];
+  useEffect(() => {
+    api.getCategorySettings().then((settings) => setCategories(settings.news)).catch(() => {});
+  }, []);
 
   const filteredNews = newsList.filter((news) => {
     if (activeCategory === 'Semua') return true;

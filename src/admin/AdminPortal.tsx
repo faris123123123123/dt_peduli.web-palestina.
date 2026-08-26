@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLogin } from './AdminLogin';
 import { AdminDashboard } from './AdminDashboard';
+import { api } from '../services/api';
 
 interface Props {
   onBackToPublic: () => void;
@@ -22,6 +23,7 @@ export const AdminPortal: React.FC<Props> = ({ onBackToPublic, onRefreshPublicDa
 
   const handleLoginSuccess = (user: any) => {
     setCurrentUser(user);
+    api.setActiveAdminRole(user.role);
     localStorage.setItem('dtp_admin_user', JSON.stringify(user));
   };
 
@@ -39,6 +41,8 @@ export const AdminPortal: React.FC<Props> = ({ onBackToPublic, onRefreshPublicDa
       />
     );
   }
+
+  api.setActiveAdminRole(currentUser.role);
 
   // If authenticated, show isolated Admin Dashboard
   return (

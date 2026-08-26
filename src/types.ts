@@ -95,6 +95,15 @@ export interface HeroSettings {
   captionSubtitle?: string;
 }
 
+export interface BrandingSettings {
+  logoUrl?: string;
+}
+
+export interface CategorySettings {
+  news: string[];
+  campaigns: string[];
+}
+
 export interface FaqItem {
   id: string;
   question: string;
